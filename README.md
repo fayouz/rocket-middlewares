@@ -2,7 +2,7 @@
 
 Environnement intégré de la suite Rocket, et chaque brique seule.
 
-Rocket Auth (fournisseur d'identité), Rocket Print, Rocket Cloud et Rocket Mailer démarrés ensemble, **en mode suite** (voir « Modes autonome et suite » dans le [README de rocket-core](https://github.com/fayouz/rocket-core#modes-autonome-et-suite)) : on se connecte à une application par Rocket Auth, on passe à une autre par le sélecteur d'applications sans se reconnecter, et la déconnexion met fin à la session Rocket Auth.
+Rocket Auth (fournisseur d'identité), Rocket Print, Rocket Cloud, Rocket Mailer, Rocket Doc Fusion (avec ONLYOFFICE Docs) et Rocket Dispatch démarrés ensemble, **en mode suite** (voir « Modes autonome et suite » dans le [README de rocket-core](https://github.com/fayouz/rocket-core#modes-autonome-et-suite)) : on se connecte à une application par Rocket Auth, on passe à une autre par le sélecteur d'applications sans se reconnecter, et la déconnexion met fin à la session Rocket Auth.
 
 Les images sont construites à partir des dépôts des briques, avec leurs propres Dockerfiles : l'environnement teste les briques telles qu'elles sont. Le workflow GitHub Actions `Suite` ([`.github/workflows/suite.yml`](.github/workflows/suite.yml)) le démarre et y joue le scénario complet dans un navigateur ([`e2e/suite.spec.js`](e2e/suite.spec.js)).
 
@@ -62,6 +62,9 @@ Ouvre le Codespace dans **VS Code** (bureau), ou transfère les ports avec `gh c
 | http://localhost:3300 | Rocket Print |
 | http://localhost:3200 | Rocket Cloud |
 | http://localhost:3000 | Rocket Mailer |
+| http://localhost:3400 | Rocket Doc Fusion : fusion de modèles Word, éditeur ONLYOFFICE |
+| http://localhost:8480 | ONLYOFFICE Docs (chargé par le navigateur pour l’éditeur) |
+| http://localhost:3500 | Rocket Dispatch : publipostage (Cloud → Doc Fusion → Mailer / Print) |
 | http://localhost:8025 | Mailpit : les emails envoyés par Rocket Mailer (relais SMTP de la suite) |
 | http://localhost:3100/.well-known/openid-configuration | Découverte OpenID Connect |
 
@@ -88,6 +91,18 @@ Clients OAuth déclarés dans Rocket Auth (`DEMO_OAUTH_CLIENTS`) : `rocket-print
 4. Choisis Rocket Mailer : il s'ouvre sans redemander le mot de passe, en administratrice. Les emails envoyés arrivent dans Mailpit (http://localhost:8025).
 5. Depuis son sélecteur, choisis Rocket Cloud : même chose.
 6. Déconnecte-toi de Rocket Cloud, puis clique sur « Se connecter avec Rocket Auth » : Rocket Auth redemande le mot de passe.
+
+### Publipostage (Rocket Dispatch)
+
+Le service `dispatch-link` déclare l'application « Rocket Dispatch » (client `rocket-dispatch` de Rocket Auth, agit en tant qu'utilisateur, origine `http://localhost:3500` autorisée pour les pages intégrées) dans Rocket Cloud, Doc Fusion, Mailer et Print : ce qu'un administrateur fait dans **Administration → Applications** de chaque brique.
+
+1. Dans Rocket Doc Fusion (http://localhost:3400), avec `alice@example.org`, télécharge le modèle d'exemple (« Fusionner » → *Télécharger un modèle d’exemple*), puis dépose-le dans Rocket Cloud (http://localhost:3200, *Mes fichiers*).
+2. Ouvre Rocket Dispatch (http://localhost:3500) → **Nouveau document** : la bibliothèque Rocket Cloud d'Alice s'affiche ; choisis `devis-exemple.docx`.
+3. Remplis les valeurs, puis **Fusionner** : le document est fusionné par Rocket Doc Fusion (ONLYOFFICE) et enregistré dans Rocket Cloud, à côté du modèle.
+4. **Document** : retouche-le dans l'éditeur ONLYOFFICE, puis **Enregistrer dans Rocket Cloud** (même fichier, nouvelle version).
+5. **Distribuer** : télécharge-le en PDF, envoie-le par email depuis le composeur de Rocket Mailer (il arrive dans Mailpit, http://localhost:8025), ou imprime-le sur l'imprimante de démo de Rocket Print.
+
+La première fusion attend qu'ONLYOFFICE ait démarré (environ une minute).
 
 Le même scénario, automatisé :
 
