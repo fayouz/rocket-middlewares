@@ -1,0 +1,10 @@
+# Rocket Auth alone (standalone mode, its own sign-in), with its demo data: the brick's own compose.yaml + compose.demo.yaml.
+#   docker compose -f compose.auth.yaml up -d --build   →  http://localhost:3100 (admin@example.org / demo-admin-password), documentation http://localhost:3101
+# ROCKET_AUTH_DIR: checkout of the brick, relative to this directory (default ../rocket-auth). Same ports as the suite:
+# stop one before starting the other.
+name: rocket-auth
+
+include:
+  - path:
+      - ${ROCKET_AUTH_DIR:-../rocket-auth}/compose.yaml
+      - ${ROCKET_AUTH_DIR:-../rocket-auth}/compose.demo.yaml

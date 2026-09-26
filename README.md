@@ -1,32 +1,58 @@
-# Environnement intégré de la suite
+# rocket-suite
 
-Rocket Auth (fournisseur d'identité), Rocket Print, Rocket Cloud et Rocket Mailer démarrés ensemble, **en mode suite** (voir « Modes autonome et suite » dans le [README](../README.md)) : on se connecte à une application par Rocket Auth, on passe à une autre par le sélecteur d'applications sans se reconnecter, et la déconnexion met fin à la session Rocket Auth.
+Environnement intégré de la suite Rocket, et chaque brique seule.
 
-Les images sont construites à partir des dépôts des briques, avec leurs propres Dockerfiles : l'environnement teste les briques telles qu'elles sont. Le workflow GitHub Actions `Suite` (`.github/workflows/suite.yml`) le démarre et y joue le scénario complet dans un navigateur ([`e2e/suite.spec.js`](e2e/suite.spec.js)).
+Rocket Auth (fournisseur d'identité), Rocket Print, Rocket Cloud et Rocket Mailer démarrés ensemble, **en mode suite** (voir « Modes autonome et suite » dans le [README de rocket-core](https://github.com/fayouz/rocket-core#modes-autonome-et-suite)) : on se connecte à une application par Rocket Auth, on passe à une autre par le sélecteur d'applications sans se reconnecter, et la déconnexion met fin à la session Rocket Auth.
+
+Les images sont construites à partir des dépôts des briques, avec leurs propres Dockerfiles : l'environnement teste les briques telles qu'elles sont. Le workflow GitHub Actions `Suite` ([`.github/workflows/suite.yml`](.github/workflows/suite.yml)) le démarre et y joue le scénario complet dans un navigateur ([`e2e/suite.spec.js`](e2e/suite.spec.js)).
 
 ## Lancer en local
 
 Pré-requis : Docker avec Compose v2.24 ou plus récent, et les dépôts clonés côte à côte, sur la même branche :
 
 ```bash
-git clone https://github.com/fayouz/rocket-core.git
+git clone https://github.com/fayouz/rocket-suite.git
 git clone https://github.com/fayouz/rocket-auth.git
 git clone https://github.com/fayouz/rocket-print.git
 git clone https://github.com/fayouz/rocket-cloud.git
 git clone https://github.com/fayouz/rocket-mailer.git
 
-cd rocket-core
-docker compose -f suite/compose.yaml up --build
+cd rocket-suite
+docker compose up --build
 ```
 
 Le premier lancement prend plusieurs minutes (construction de huit images). Les services `auth-seed`, `print-seed`, `cloud-seed` et `mailer-seed` créent chacun leur base, chargent les données de démo puis s'arrêtent ; les API démarrent ensuite.
 
-Des dépôts ailleurs ? Indique leur chemin (relatif au dossier `suite/`, ou absolu) :
+Des dépôts ailleurs ? Indique leur chemin (relatif au dossier `rocket-suite/`, ou absolu) :
 
 ```bash
 ROCKET_AUTH_DIR=~/src/rocket-auth ROCKET_PRINT_DIR=~/src/rocket-print ROCKET_CLOUD_DIR=~/src/rocket-cloud ROCKET_MAILER_DIR=~/src/rocket-mailer \
-  docker compose -f suite/compose.yaml up --build
+  docker compose up --build
 ```
+
+### Une brique seule
+
+`compose.auth.yaml`, `compose.print.yaml`, `compose.cloud.yaml` et `compose.mailer.yaml` démarrent une brique en mode autonome (sa propre connexion) avec ses données de démo : ils incluent le `compose.yaml` et le `compose.demo.yaml` de la brique, sans rien recopier.
+
+```bash
+docker compose -f compose.print.yaml up -d --build
+```
+
+Mêmes ports que la suite : arrête l'une avant de démarrer l'autre (`docker compose down` garde les données). Adresses et comptes : `demo/README.md` de chaque brique.
+
+### Avec Podman
+
+Podman construit les images en parallèle et ne connaît pas `COPY --link` (Dockerfiles des briques) : construire une image à la fois, avec une machine Podman d'au moins 4 Go de mémoire, et retirer `--link` des Dockerfiles tant qu'il y est.
+
+```bash
+COMPOSE_PARALLEL_LIMIT=1 docker compose build && docker compose up -d
+```
+
+## Dans un Codespace
+
+Rien à installer ni à stocker en local : **Code › Codespaces › Create codespace on main** sur GitHub. La configuration (`.devcontainer/`) clone les quatre briques à côté du dépôt, sur la même branche quand elle existe (sinon `main`), puis construit et démarre la suite (quelques minutes la première fois). Pour une brique seule : `bash .devcontainer/start.sh print` (ou `auth`, `cloud`, `mailer`) ; `bash .devcontainer/start.sh` revient à la suite.
+
+Ouvre le Codespace dans **VS Code** (bureau), ou transfère les ports avec `gh codespace ports forward 3100:3100 3300:3300 3200:3200 3000:3000 8025:8025` : l'émetteur de Rocket Auth et les redirections OAuth sont en `http://localhost:<port>`, donc la connexion ne fonctionne pas par les adresses `*.app.github.dev` de VS Code dans le navigateur.
 
 ## Adresses
 
@@ -66,19 +92,19 @@ Clients OAuth déclarés dans Rocket Auth (`DEMO_OAUTH_CLIENTS`) : `rocket-print
 Le même scénario, automatisé :
 
 ```bash
-cd suite/e2e
+cd e2e
 npm ci && npx playwright install chromium
 npx playwright test          # captures dans screenshots/, traces dans test-results/
 ```
 
 ## Ajouter une brique
 
-Comme Rocket Mailer (port 3000) : une entrée dans `DEMO_OAUTH_CLIENTS` (service Rocket Auth), puis les services `<brique>-seed`, `<brique>-api`, `<brique>-worker` et `<brique>-front` copiés de ceux de Rocket Print (avec `ROCKET_<BRIQUE>_DIR`, sa base, son secret et son `ROCKET_INTERNAL_URL`), plus ses besoins propres (pour Rocket Mailer : le relais SMTP Mailpit, `MAILER_DSN`, `MAILBOX_ENCRYPTION_KEY` et le volume des pièces jointes partagé par l'API et le worker). La base est créée par son `seed`, rien à changer côté PostgreSQL. Dans le workflow, ajouter le dépôt à la liste des branches, un `actions/checkout`, son `seed` et son adresse dans les attentes.
+Comme Rocket Mailer (port 3000) : une entrée dans `DEMO_OAUTH_CLIENTS` (service Rocket Auth), puis les services `<brique>-seed`, `<brique>-api`, `<brique>-worker` et `<brique>-front` copiés de ceux de Rocket Print (avec `ROCKET_<BRIQUE>_DIR`, sa base, son secret et son `ROCKET_INTERNAL_URL`), plus ses besoins propres (pour Rocket Mailer : le relais SMTP Mailpit, `MAILER_DSN`, `MAILBOX_ENCRYPTION_KEY` et le volume des pièces jointes partagé par l'API et le worker). La base est créée par son `seed`, rien à changer côté PostgreSQL. Ajouter aussi son `compose.<brique>.yaml` (copié de `compose.print.yaml`), et la brique à `.devcontainer/clone-bricks.sh` et `.devcontainer/start.sh`. Dans le workflow, ajouter le dépôt à la liste des branches, un `actions/checkout`, son `seed` et son adresse dans les attentes.
 
 ## Réinitialiser
 
 ```bash
-docker compose -f suite/compose.yaml down -v
+docker compose down -v
 ```
 
 > Mots de passe, secrets de clients et jetons d'application publics : ne jamais exposer cet environnement sur Internet.

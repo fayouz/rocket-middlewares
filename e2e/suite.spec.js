@@ -1,5 +1,5 @@
 // @ts-check
-// Suite mode, end to end (suite/compose.yaml): sign-in to Rocket Print through Rocket Auth, administrator through
+// Suite mode, end to end (compose.yaml): sign-in to Rocket Print through Rocket Auth, administrator through
 // the rocket-admins group, application switcher, Rocket Mailer then Rocket Cloud without a second sign-in, logout
 // propagated to Rocket Auth.
 const fs = require('node:fs')

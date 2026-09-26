@@ -1,7 +1,7 @@
 # Integrated environment of the suite: Rocket Auth (identity provider) + Rocket Print + Rocket Cloud + Rocket Mailer.
-# See suite/README.md. The images are built from sibling checkouts of the bricks (their own Dockerfiles):
-#   ROCKET_AUTH_DIR / ROCKET_PRINT_DIR / ROCKET_CLOUD_DIR / ROCKET_MAILER_DIR, relative to this directory (default ../../rocket-<brick>).
-#   docker compose -f suite/compose.yaml up -d --build
+# See README.md. The images are built from sibling checkouts of the bricks (their own Dockerfiles):
+#   ROCKET_AUTH_DIR / ROCKET_PRINT_DIR / ROCKET_CLOUD_DIR / ROCKET_MAILER_DIR, relative to this directory (default ../rocket-<brick>).
+#   docker compose up -d --build
 # Demo only: known passwords, client secrets and application tokens.
 #
 # Addresses: the browser only talks to the interfaces (they proxy /api; Rocket Auth's also relays /oauth and
@@ -92,12 +92,12 @@ services:
       LDAP_DOMAIN: example.org
       LDAP_ADMIN_PASSWORD: adminpassword
     volumes:
-      - ${ROCKET_AUTH_DIR:-../../rocket-auth}/docker/ldap:/container/service/slapd/assets/config/bootstrap/ldif/custom:ro
+      - ${ROCKET_AUTH_DIR:-../rocket-auth}/docker/ldap:/container/service/slapd/assets/config/bootstrap/ldif/custom:ro
 
   # ---------------------------------------------------------------- Rocket Auth (http://localhost:3100)
   auth-seed:
     build:
-      context: ${ROCKET_AUTH_DIR:-../../rocket-auth}/backend
+      context: ${ROCKET_AUTH_DIR:-../rocket-auth}/backend
       target: prod
       args: *build-args
     image: rocket-suite-auth-api
@@ -145,7 +145,7 @@ services:
 
   auth-front:
     build:
-      context: ${ROCKET_AUTH_DIR:-../../rocket-auth}/frontend
+      context: ${ROCKET_AUTH_DIR:-../rocket-auth}/frontend
       args: *build-args
     image: rocket-suite-auth-front
     environment:
@@ -159,7 +159,7 @@ services:
   # ---------------------------------------------------------------- Rocket Print (http://localhost:3300)
   print-seed:
     build:
-      context: ${ROCKET_PRINT_DIR:-../../rocket-print}/backend
+      context: ${ROCKET_PRINT_DIR:-../rocket-print}/backend
       target: prod
       args: *build-args
     image: rocket-suite-print-api
@@ -204,7 +204,7 @@ services:
 
   print-front:
     build:
-      context: ${ROCKET_PRINT_DIR:-../../rocket-print}/frontend
+      context: ${ROCKET_PRINT_DIR:-../rocket-print}/frontend
       args: *build-args
     image: rocket-suite-print-front
     environment:
@@ -218,7 +218,7 @@ services:
   # ---------------------------------------------------------------- Rocket Cloud (http://localhost:3200)
   cloud-seed:
     build:
-      context: ${ROCKET_CLOUD_DIR:-../../rocket-cloud}/backend
+      context: ${ROCKET_CLOUD_DIR:-../rocket-cloud}/backend
       target: prod
       args: *build-args
     image: rocket-suite-cloud-api
@@ -266,7 +266,7 @@ services:
 
   cloud-front:
     build:
-      context: ${ROCKET_CLOUD_DIR:-../../rocket-cloud}/frontend
+      context: ${ROCKET_CLOUD_DIR:-../rocket-cloud}/frontend
       args: *build-args
     image: rocket-suite-cloud-front
     environment:
@@ -280,7 +280,7 @@ services:
   # ---------------------------------------------------------------- Rocket Mailer (http://localhost:3000)
   mailer-seed:
     build:
-      context: ${ROCKET_MAILER_DIR:-../../rocket-mailer}/backend
+      context: ${ROCKET_MAILER_DIR:-../rocket-mailer}/backend
       target: prod
       args: *build-args
     image: rocket-suite-mailer-api
@@ -331,7 +331,7 @@ services:
 
   mailer-front:
     build:
-      context: ${ROCKET_MAILER_DIR:-../../rocket-mailer}/frontend
+      context: ${ROCKET_MAILER_DIR:-../rocket-mailer}/frontend
       args: *build-args
     image: rocket-suite-mailer-front
     environment:

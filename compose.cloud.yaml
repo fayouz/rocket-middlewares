@@ -1,0 +1,10 @@
+# Rocket Cloud alone (standalone mode, its own sign-in), with its demo data: the brick's own compose.yaml + compose.demo.yaml.
+#   docker compose -f compose.cloud.yaml up -d --build   →  http://localhost:3200, documentation http://localhost:3201
+# ROCKET_CLOUD_DIR: checkout of the brick, relative to this directory (default ../rocket-cloud). Same ports as the suite:
+# stop one before starting the other.
+name: rocket-cloud
+
+include:
+  - path:
+      - ${ROCKET_CLOUD_DIR:-../rocket-cloud}/compose.yaml
+      - ${ROCKET_CLOUD_DIR:-../rocket-cloud}/compose.demo.yaml

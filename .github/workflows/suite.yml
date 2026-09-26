@@ -1,0 +1,148 @@
+name: Suite
+
+# Integrated environment (compose.yaml): Rocket Auth + Rocket Print + Rocket Cloud + Rocket Mailer built from their own
+# Dockerfiles, then the suite scenario in a browser (e2e/).
+on:
+  push:
+    branches: [main, develop, 'feature/**', 'release/**', 'hotfix/**', 'claude/**']
+    tags: ['v*']
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  suite:
+    name: Suite environment (Auth + Print + Cloud + Mailer)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      # The bricks are checked out next to rocket-suite, where compose.yaml looks for them by default.
+      COMPOSE: docker compose -f rocket-suite/compose.yaml
+      APP_VERSION: v0.0.0-suite
+      AUTH: http://localhost:3100
+      PRINT: http://localhost:3300
+      CLOUD: http://localhost:3200
+      MAILER: http://localhost:3000
+    steps:
+      - name: Branch of the bricks
+        id: refs
+        env:
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          # Same branch as rocket-suite when the brick has it, main otherwise.
+          for repo in rocket-auth rocket-print rocket-cloud rocket-mailer; do
+            if git ls-remote --exit-code --heads "https://github.com/fayouz/$repo.git" "refs/heads/$BRANCH" >/dev/null; then
+              ref="$BRANCH"
+            else
+              ref=main
+            fi
+            echo "$repo: $ref"
+            echo "${repo#rocket-}=$ref" >> "$GITHUB_OUTPUT"
+          done
+
+      - uses: actions/checkout@v4
+        with:
+          path: rocket-suite
+      - uses: actions/checkout@v4
+        with:
+          repository: fayouz/rocket-auth
+          ref: ${{ steps.refs.outputs.auth }}
+          path: rocket-auth
+      - uses: actions/checkout@v4
+        with:
+          repository: fayouz/rocket-print
+          ref: ${{ steps.refs.outputs.print }}
+          path: rocket-print
+      - uses: actions/checkout@v4
+        with:
+          repository: fayouz/rocket-cloud
+          ref: ${{ steps.refs.outputs.cloud }}
+          path: rocket-cloud
+      - uses: actions/checkout@v4
+        with:
+          repository: fayouz/rocket-mailer
+          ref: ${{ steps.refs.outputs.mailer }}
+          path: rocket-mailer
+
+      - name: Versions of the stack
+        run: for repo in rocket-suite rocket-auth rocket-print rocket-cloud rocket-mailer; do echo "$repo $(git -C $repo rev-parse --short HEAD) $(git -C $repo log -1 --format=%s)"; done
+
+      - name: Build the images
+        run: $COMPOSE build
+
+      - name: Start the suite
+        run: |
+          $COMPOSE up -d
+          for seed in auth-seed print-seed cloud-seed mailer-seed; do
+            code=$(docker wait "$($COMPOSE ps -aq $seed)")
+            echo "$seed: exit $code"; test "$code" = 0
+          done
+          # Ready when the interfaces answer and their /api proxy reaches the APIs (and Mailpit, Rocket Mailer's relay, answers).
+          for i in $(seq 1 90); do
+            curl -fsS $AUTH/login -o /dev/null \
+              && curl -fsS $AUTH/.well-known/openid-configuration -o /dev/null \
+              && curl -fsS $PRINT/api/suite -o /dev/null \
+              && curl -fsS $CLOUD/api/suite -o /dev/null \
+              && curl -fsS $MAILER/api/suite -o /dev/null \
+              && curl -fsS http://localhost:8025/ -o /dev/null \
+              && exit 0
+            sleep 2
+          done
+          echo "The suite never became ready" && exit 1
+
+      - name: Check the suite configuration
+        run: |
+          set -x
+          # The issuer is Rocket Auth's interface, which relays the OpenID Connect endpoints.
+          curl -fsS $AUTH/.well-known/openid-configuration | jq -e '.issuer == "http://localhost:3100" and (.authorization_endpoint | startswith("http://localhost:3100/"))'
+          # Applications of the switcher, and the interface for "Mon compte"
+          curl -fsS $AUTH/api/suite/apps | tee /dev/stderr | jq -e '([.apps[].name] | index("Rocket Print") and index("Rocket Cloud") and index("Rocket Mailer")) and .account == "http://localhost:3100"'
+          # The bricks are in suite mode, with Rocket Auth as their provider
+          curl -fsS $PRINT/api/suite | tee /dev/stderr | jq -e '.mode == "suite" and .auth.name == "Rocket Auth"'
+          curl -fsS $CLOUD/api/suite | tee /dev/stderr | jq -e '.mode == "suite" and .auth.name == "Rocket Auth"'
+          curl -fsS $MAILER/api/suite | tee /dev/stderr | jq -e '.mode == "suite" and .auth.name == "Rocket Auth"'
+          # Rocket Mailer: its widget script, and its SMTP relay (Mailpit)
+          curl -fsS $MAILER/embed.js | grep -q RocketMailer
+          curl -fsS http://localhost:8025/api/v1/messages -H 'Accept: application/json' | jq -e '.messages | type == "array"'
+          # Rocket Cloud reaches Rocket Mailer with a token of Rocket Auth (client credentials, application "Rocket Cloud"
+          # of Rocket Mailer): its health check of the notifications calls Rocket Mailer's /api/me.
+          $COMPOSE exec -T cloud-api php bin/console app:health:check | tee cloud-health.txt || true
+          grep -E 'mailer[^ ]*[[:space:]]+OK' cloud-health.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: rocket-suite/e2e/package-lock.json
+
+      - name: Install Playwright
+        working-directory: rocket-suite/e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Suite scenario (browser)
+        working-directory: rocket-suite/e2e
+        run: npx playwright test
+
+      - name: Screenshots and trace
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: suite-e2e
+          path: |
+            rocket-suite/e2e/screenshots/
+            rocket-suite/e2e/test-results/
+            rocket-suite/e2e/playwright-report/
+          if-no-files-found: ignore
+
+      - name: Logs
+        if: failure()
+        run: |
+          $COMPOSE ps -a
+          $COMPOSE logs --no-color --tail=150

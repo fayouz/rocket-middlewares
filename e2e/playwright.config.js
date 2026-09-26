@@ -1,7 +1,7 @@
 // @ts-check
 const { defineConfig } = require('@playwright/test')
 
-// The stack (suite/compose.yaml) is started beforehand; this only drives a browser against it.
+// The stack (compose.yaml) is started beforehand; this only drives a browser against it.
 module.exports = defineConfig({
   testDir: '.',
   testMatch: '*.spec.js',
