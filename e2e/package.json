@@ -1,0 +1,11 @@
+{
+  "name": "rocket-suite-e2e",
+  "private": true,
+  "description": "End-to-end scenario of the Rocket suite (suite/compose.yaml): sign-in through Rocket Auth, application switcher, single sign-on, logout.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  }
+}

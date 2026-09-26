@@ -1,0 +1,279 @@
+# Integrated environment of the suite: Rocket Auth (identity provider) + Rocket Print + Rocket Cloud.
+# See suite/README.md. The images are built from sibling checkouts of the bricks (their own Dockerfiles):
+#   ROCKET_AUTH_DIR / ROCKET_PRINT_DIR / ROCKET_CLOUD_DIR, relative to this directory (default ../../rocket-<brick>).
+#   docker compose -f suite/compose.yaml up -d --build
+# Demo only: known passwords, client secrets and application tokens.
+#
+# Addresses: the browser only talks to the interfaces (they proxy /api; Rocket Auth's also relays /oauth and
+# /.well-known), so the issuer is Rocket Auth's interface, http://localhost:3100. The APIs reach Rocket Auth
+# inside the network (ROCKET_AUTH_INTERNAL_URL). Each brick has its own cookie (rocket_<id>_token): sharing
+# localhost across ports is fine.
+#
+# Adding a brick (e.g. Rocket Mailer on port 3000): one entry in DEMO_OAUTH_CLIENTS below, then a <brick>-seed,
+# <brick>-api, <brick>-worker and <brick>-front block copied from Rocket Print (its database is created by its seed).
+name: rocket-suite
+
+x-suite:
+  # Public address of Rocket Auth (its issuer), as the browser sees it.
+  auth-url: &auth-url http://localhost:3100
+  build-args: &build-args
+    APP_VERSION: ${APP_VERSION:-suite}
+
+# Environment shared by every brick's API, worker and seed.
+x-brick-env: &brick-env
+  APP_ENV: prod
+  MESSENGER_TRANSPORT_DSN: doctrine://default
+  JWT_PASSPHRASE: demo
+  DEMO_MODE: "1"
+  LDAP_ENABLED: "0"
+  # Suite mode: sign-in through Rocket Auth, administrators from its group.
+  ROCKET_AUTH_URL: *auth-url
+  ROCKET_AUTH_INTERNAL_URL: http://auth-api
+  ROCKET_AUTH_ADMIN_GROUP: rocket-admins
+  ROCKET_LOCAL_LOGIN: "0"
+
+x-auth-env: &auth-env
+  APP_ENV: prod
+  APP_SECRET: demo-suite-rocket-auth
+  JWT_PASSPHRASE: demo
+  DATABASE_URL: postgresql://app:app@database:5432/rocket_auth?serverVersion=16&charset=utf8
+  MESSENGER_TRANSPORT_DSN: doctrine://default
+  DEMO_MODE: "1"
+  DEMO_APP_TOKEN: raa_demo_rocket_auth_do_not_use_in_production
+  OIDC_ISSUER: *auth-url
+  FRONTEND_URL: *auth-url
+  # Directory of the suite: users and groups live in Rocket Auth only.
+  LDAP_ENABLED: "1"
+  LDAP_URL: ldap://ldap:389
+  LDAP_BASE_DN: ou=people,dc=example,dc=org
+  LDAP_SEARCH_DN: cn=admin,dc=example,dc=org
+  LDAP_SEARCH_PASSWORD: adminpassword
+  LDAP_ADMIN_GROUP_DN: cn=rocket-admins,ou=groups,dc=example,dc=org
+  # The bricks, as OAuth clients shown in the application switcher:
+  # clientId|Name|secret|redirect|post-logout|homeUrl|icon (secrets of 24 characters or more).
+  DEMO_OAUTH_CLIENTS: >-
+    rocket-print|Rocket Print|demo-rocket-print-client-secret|http://localhost:3300/auth/callback|http://localhost:3300/login?logged_out=1|http://localhost:3300|i-lucide-printer;
+    rocket-cloud|Rocket Cloud|demo-rocket-cloud-client-secret|http://localhost:3200/auth/callback|http://localhost:3200/login?logged_out=1|http://localhost:3200|i-lucide-cloud
+
+# Seed of a brick: its database, schema and demo data, then the Rocket Auth server of the suite.
+x-brick-seed-command: &brick-seed-command
+  - sh
+  - -c
+  - |
+    php bin/console doctrine:database:create --if-not-exists --no-interaction
+    php bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration
+    php bin/console app:demo:seed
+    php bin/console rocket:suite:sync
+
+x-worker-command: &worker-command ["php", "bin/console", "messenger:consume", "async", "scheduler_default", "--time-limit=3600", "-vv"]
+
+services:
+  # One PostgreSQL server, one database per brick (created by its seed).
+  database:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+    healthcheck:
+      test: ["CMD", "pg_isready", "-d", "app", "-U", "app"]
+      interval: 5s
+      retries: 10
+    volumes:
+      - database_data:/var/lib/postgresql/data
+
+  # Directory of Rocket Auth (the brick's own test directory: marie.martin is in rocket-admins).
+  ldap:
+    image: osixia/openldap:1.5.0
+    command: ["--copy-service"]
+    environment:
+      LDAP_ORGANISATION: Example
+      LDAP_DOMAIN: example.org
+      LDAP_ADMIN_PASSWORD: adminpassword
+    volumes:
+      - ${ROCKET_AUTH_DIR:-../../rocket-auth}/docker/ldap:/container/service/slapd/assets/config/bootstrap/ldif/custom:ro
+
+  # ---------------------------------------------------------------- Rocket Auth (http://localhost:3100)
+  auth-seed:
+    build:
+      context: ${ROCKET_AUTH_DIR:-../../rocket-auth}/backend
+      target: prod
+      args: *build-args
+    image: rocket-suite-auth-api
+    environment: *auth-env
+    volumes:
+      - auth_jwt:/app/config/jwt
+      - auth_data:/app/var/data
+    command:
+      - sh
+      - -c
+      - |
+        php bin/console doctrine:database:create --if-not-exists --no-interaction
+        php bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration
+        php bin/console app:demo:seed
+        for i in $$(seq 1 30); do php bin/console app:ldap:sync && exit 0; echo "LDAP not ready, retrying…"; sleep 2; done
+        exit 1
+    depends_on:
+      database:
+        condition: service_healthy
+      ldap:
+        condition: service_started
+
+  auth-api:
+    image: rocket-suite-auth-api
+    environment: *auth-env
+    volumes:
+      - auth_jwt:/app/config/jwt
+      - auth_data:/app/var/data
+    ports:
+      - "8100:80"
+    depends_on:
+      auth-seed:
+        condition: service_completed_successfully
+
+  auth-worker:
+    image: rocket-suite-auth-api
+    environment: *auth-env
+    command: *worker-command
+    restart: unless-stopped
+    volumes:
+      - auth_jwt:/app/config/jwt
+      - auth_data:/app/var/data
+    depends_on:
+      - auth-api
+
+  auth-front:
+    build:
+      context: ${ROCKET_AUTH_DIR:-../../rocket-auth}/frontend
+      args: *build-args
+    image: rocket-suite-auth-front
+    environment:
+      NUXT_PUBLIC_API_BASE: ""
+      NUXT_API_INTERNAL_BASE: http://auth-api:80
+    ports:
+      - "3100:3000"
+    depends_on:
+      - auth-api
+
+  # ---------------------------------------------------------------- Rocket Print (http://localhost:3300)
+  print-seed:
+    build:
+      context: ${ROCKET_PRINT_DIR:-../../rocket-print}/backend
+      target: prod
+      args: *build-args
+    image: rocket-suite-print-api
+    environment: &print-env
+      <<: *brick-env
+      APP_SECRET: demo-suite-rocket-print
+      DATABASE_URL: postgresql://app:app@database:5432/rocket_print?serverVersion=16&charset=utf8
+      FRONTEND_URL: http://localhost:3300
+      DEMO_APP_TOKEN: rpa_demo_rocket_print_do_not_use_in_production
+      ROCKET_AUTH_CLIENT_ID: rocket-print
+      ROCKET_AUTH_CLIENT_SECRET: demo-rocket-print-client-secret
+    volumes:
+      - print_jwt:/app/config/jwt
+      - print_data:/app/var/data
+    command: *brick-seed-command
+    depends_on:
+      database:
+        condition: service_healthy
+
+  print-api:
+    image: rocket-suite-print-api
+    environment: *print-env
+    volumes:
+      - print_jwt:/app/config/jwt
+      - print_data:/app/var/data
+    depends_on:
+      print-seed:
+        condition: service_completed_successfully
+
+  print-worker:
+    image: rocket-suite-print-api
+    environment: *print-env
+    command: *worker-command
+    restart: unless-stopped
+    volumes:
+      - print_jwt:/app/config/jwt
+      - print_data:/app/var/data
+    depends_on:
+      - print-api
+
+  print-front:
+    build:
+      context: ${ROCKET_PRINT_DIR:-../../rocket-print}/frontend
+      args: *build-args
+    image: rocket-suite-print-front
+    environment:
+      NUXT_PUBLIC_API_BASE: ""
+      NUXT_API_INTERNAL_BASE: http://print-api:80
+    ports:
+      - "3300:3000"
+    depends_on:
+      - print-api
+
+  # ---------------------------------------------------------------- Rocket Cloud (http://localhost:3200)
+  cloud-seed:
+    build:
+      context: ${ROCKET_CLOUD_DIR:-../../rocket-cloud}/backend
+      target: prod
+      args: *build-args
+    image: rocket-suite-cloud-api
+    environment: &cloud-env
+      <<: *brick-env
+      APP_SECRET: demo-suite-rocket-cloud
+      DATABASE_URL: postgresql://app:app@database:5432/rocket_cloud?serverVersion=16&charset=utf8
+      FRONTEND_URL: http://localhost:3200
+      DEMO_APP_TOKEN: rca_demo_rocket_cloud_do_not_use_in_production
+      ROCKET_AUTH_CLIENT_ID: rocket-cloud
+      ROCKET_AUTH_CLIENT_SECRET: demo-rocket-cloud-client-secret
+    volumes:
+      - cloud_jwt:/app/config/jwt
+      - cloud_data:/app/var/data
+    command: *brick-seed-command
+    depends_on:
+      database:
+        condition: service_healthy
+
+  cloud-api:
+    image: rocket-suite-cloud-api
+    environment: *cloud-env
+    volumes:
+      - cloud_jwt:/app/config/jwt
+      - cloud_data:/app/var/data
+    depends_on:
+      cloud-seed:
+        condition: service_completed_successfully
+
+  cloud-worker:
+    image: rocket-suite-cloud-api
+    environment: *cloud-env
+    command: *worker-command
+    restart: unless-stopped
+    volumes:
+      - cloud_jwt:/app/config/jwt
+      - cloud_data:/app/var/data
+    depends_on:
+      - cloud-api
+
+  cloud-front:
+    build:
+      context: ${ROCKET_CLOUD_DIR:-../../rocket-cloud}/frontend
+      args: *build-args
+    image: rocket-suite-cloud-front
+    environment:
+      NUXT_PUBLIC_API_BASE: ""
+      NUXT_API_INTERNAL_BASE: http://cloud-api:80
+    ports:
+      - "3200:3000"
+    depends_on:
+      - cloud-api
+
+volumes:
+  database_data:
+  auth_jwt:
+  auth_data:
+  print_jwt:
+  print_data:
+  cloud_jwt:
+  cloud_data:
