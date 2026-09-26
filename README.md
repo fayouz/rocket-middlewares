@@ -39,7 +39,7 @@ ROCKET_AUTH_DIR=~/src/rocket-auth ROCKET_PRINT_DIR=~/src/rocket-print ROCKET_CLO
 | http://localhost:8025 | Mailpit : les emails envoyés par Rocket Mailer (relais SMTP de la suite) |
 | http://localhost:3100/.well-known/openid-configuration | Découverte OpenID Connect |
 
-Le navigateur ne parle qu'aux interfaces : elles relaient `/api` vers leur API, et celle de Rocket Auth relaie aussi `/oauth` et `/.well-known`. L'émetteur de Rocket Auth est donc `http://localhost:3100` ; les API des briques le joignent dans le réseau Docker (`ROCKET_AUTH_INTERNAL_URL=http://auth-api`). Chaque application a son propre cookie (`rocket_<id>_token`) : partager `localhost` entre les ports ne pose pas de problème. Dans l'autre sens, Rocket Auth envoie les déconnexions (back-channel logout) aux API des briques (`ROCKET_INTERNAL_URL=http://print-api`, `http://cloud-api`, `http://mailer-api`).
+Le navigateur ne parle qu'aux interfaces : elles relaient `/api` vers leur API, et celle de Rocket Auth relaie aussi `/oauth` et `/.well-known`. L'émetteur de Rocket Auth est donc `http://localhost:3100` ; les API des briques le joignent dans le réseau Docker (`ROCKET_AUTH_INTERNAL_URL=http://auth-api`). Chaque application a son propre cookie (`rocket_<id>_token`) : partager `localhost` entre les ports ne pose pas de problème. Dans l'autre sens, Rocket Auth envoie les déconnexions (back-channel logout) aux API des briques (`ROCKET_INTERNAL_URL=http://print-api`, `http://cloud-api`, `http://mailer-api`). Rocket Cloud envoie ses notifications de partage par Rocket Mailer (`ROCKET_MAILER_URL=http://mailer-api`) avec un jeton de Rocket Auth (client credentials) : les données de démo de Rocket Mailer lient son application « Rocket Cloud » au client `rocket-cloud`.
 
 ## Comptes
 

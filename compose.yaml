@@ -232,6 +232,9 @@ services:
       DEMO_APP_TOKEN: rca_demo_rocket_cloud_do_not_use_in_production
       ROCKET_AUTH_CLIENT_ID: rocket-cloud
       ROCKET_AUTH_CLIENT_SECRET: demo-rocket-cloud-client-secret
+      # Share notifications sent through Rocket Mailer, with a token of Rocket Auth (client credentials): Rocket
+      # Mailer's demo data link its application "Rocket Cloud" to the client rocket-cloud.
+      ROCKET_MAILER_URL: http://mailer-api
     volumes:
       - cloud_jwt:/app/config/jwt
       - cloud_data:/app/var/data
