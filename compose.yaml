@@ -167,6 +167,8 @@ services:
       APP_SECRET: demo-suite-rocket-print
       DATABASE_URL: postgresql://app:app@database:5432/rocket_print?serverVersion=16&charset=utf8
       FRONTEND_URL: http://localhost:3300
+      # Where Rocket Auth sends the back-channel logouts (inside the network).
+      ROCKET_INTERNAL_URL: http://print-api
       DEMO_APP_TOKEN: rpa_demo_rocket_print_do_not_use_in_production
       ROCKET_AUTH_CLIENT_ID: rocket-print
       ROCKET_AUTH_CLIENT_SECRET: demo-rocket-print-client-secret
@@ -224,6 +226,8 @@ services:
       APP_SECRET: demo-suite-rocket-cloud
       DATABASE_URL: postgresql://app:app@database:5432/rocket_cloud?serverVersion=16&charset=utf8
       FRONTEND_URL: http://localhost:3200
+      # Where Rocket Auth sends the back-channel logouts (inside the network).
+      ROCKET_INTERNAL_URL: http://cloud-api
       DEMO_APP_TOKEN: rca_demo_rocket_cloud_do_not_use_in_production
       ROCKET_AUTH_CLIENT_ID: rocket-cloud
       ROCKET_AUTH_CLIENT_SECRET: demo-rocket-cloud-client-secret

@@ -36,7 +36,7 @@ ROCKET_AUTH_DIR=~/src/rocket-auth ROCKET_PRINT_DIR=~/src/rocket-print ROCKET_CLO
 | http://localhost:3200 | Rocket Cloud |
 | http://localhost:3100/.well-known/openid-configuration | Découverte OpenID Connect |
 
-Le navigateur ne parle qu'aux interfaces : elles relaient `/api` vers leur API, et celle de Rocket Auth relaie aussi `/oauth` et `/.well-known`. L'émetteur de Rocket Auth est donc `http://localhost:3100` ; les API des briques le joignent dans le réseau Docker (`ROCKET_AUTH_INTERNAL_URL=http://auth-api`). Chaque application a son propre cookie (`rocket_<id>_token`) : partager `localhost` entre les ports ne pose pas de problème.
+Le navigateur ne parle qu'aux interfaces : elles relaient `/api` vers leur API, et celle de Rocket Auth relaie aussi `/oauth` et `/.well-known`. L'émetteur de Rocket Auth est donc `http://localhost:3100` ; les API des briques le joignent dans le réseau Docker (`ROCKET_AUTH_INTERNAL_URL=http://auth-api`). Chaque application a son propre cookie (`rocket_<id>_token`) : partager `localhost` entre les ports ne pose pas de problème. Dans l'autre sens, Rocket Auth envoie les déconnexions (back-channel logout) aux API des briques (`ROCKET_INTERNAL_URL=http://print-api`, `http://cloud-api`).
 
 ## Comptes
 
