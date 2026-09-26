@@ -1,6 +1,6 @@
-# Integrated environment of the suite: Rocket Auth (identity provider) + Rocket Print + Rocket Cloud.
+# Integrated environment of the suite: Rocket Auth (identity provider) + Rocket Print + Rocket Cloud + Rocket Mailer.
 # See suite/README.md. The images are built from sibling checkouts of the bricks (their own Dockerfiles):
-#   ROCKET_AUTH_DIR / ROCKET_PRINT_DIR / ROCKET_CLOUD_DIR, relative to this directory (default ../../rocket-<brick>).
+#   ROCKET_AUTH_DIR / ROCKET_PRINT_DIR / ROCKET_CLOUD_DIR / ROCKET_MAILER_DIR, relative to this directory (default ../../rocket-<brick>).
 #   docker compose -f suite/compose.yaml up -d --build
 # Demo only: known passwords, client secrets and application tokens.
 #
@@ -9,7 +9,7 @@
 # inside the network (ROCKET_AUTH_INTERNAL_URL). Each brick has its own cookie (rocket_<id>_token): sharing
 # localhost across ports is fine.
 #
-# Adding a brick (e.g. Rocket Mailer on port 3000): one entry in DEMO_OAUTH_CLIENTS below, then a <brick>-seed,
+# Adding a brick: one entry in DEMO_OAUTH_CLIENTS below, then a <brick>-seed,
 # <brick>-api, <brick>-worker and <brick>-front block copied from Rocket Print (its database is created by its seed).
 name: rocket-suite
 
@@ -53,7 +53,8 @@ x-auth-env: &auth-env
   # clientId|Name|secret|redirect|post-logout|homeUrl|icon (secrets of 24 characters or more).
   DEMO_OAUTH_CLIENTS: >-
     rocket-print|Rocket Print|demo-rocket-print-client-secret|http://localhost:3300/auth/callback|http://localhost:3300/login?logged_out=1|http://localhost:3300|i-lucide-printer;
-    rocket-cloud|Rocket Cloud|demo-rocket-cloud-client-secret|http://localhost:3200/auth/callback|http://localhost:3200/login?logged_out=1|http://localhost:3200|i-lucide-cloud
+    rocket-cloud|Rocket Cloud|demo-rocket-cloud-client-secret|http://localhost:3200/auth/callback|http://localhost:3200/login?logged_out=1|http://localhost:3200|i-lucide-cloud;
+    rocket-mailer|Rocket Mailer|demo-rocket-mailer-client-secret|http://localhost:3000/auth/callback|http://localhost:3000/login?logged_out=1|http://localhost:3000|i-lucide-mail
 
 # Seed of a brick: its database, schema and demo data, then the Rocket Auth server of the suite.
 x-brick-seed-command: &brick-seed-command
@@ -273,6 +274,78 @@ services:
     depends_on:
       - cloud-api
 
+  # ---------------------------------------------------------------- Rocket Mailer (http://localhost:3000)
+  mailer-seed:
+    build:
+      context: ${ROCKET_MAILER_DIR:-../../rocket-mailer}/backend
+      target: prod
+      args: *build-args
+    image: rocket-suite-mailer-api
+    environment: &mailer-env
+      <<: *brick-env
+      APP_SECRET: demo-suite-rocket-mailer
+      DATABASE_URL: postgresql://app:app@database:5432/rocket_mailer?serverVersion=16&charset=utf8
+      FRONTEND_URL: http://localhost:3000
+      # Where Rocket Auth sends the back-channel logouts (inside the network).
+      ROCKET_INTERNAL_URL: http://mailer-api
+      DEMO_APP_TOKEN: rma_demo_rocket_mailer_do_not_use_in_production
+      ROCKET_AUTH_CLIENT_ID: rocket-mailer
+      ROCKET_AUTH_CLIENT_SECRET: demo-rocket-mailer-client-secret
+      # Sending: every email ends up in Mailpit (http://localhost:8025), from the default sender seeded at install.
+      MAILER_DSN: smtp://mailpit:1025
+      MAILER_DEFAULT_FROM: Rocket Mailer <no-reply@example.org>
+      # Encrypts the passwords of the sending mailboxes stored in the database.
+      MAILBOX_ENCRYPTION_KEY: demo-suite-rocket-mailer-mailboxes
+    volumes:
+      - mailer_jwt:/app/config/jwt
+      - mailer_attachments:/app/var/attachments
+    command: *brick-seed-command
+    depends_on:
+      database:
+        condition: service_healthy
+
+  mailer-api:
+    image: rocket-suite-mailer-api
+    environment: *mailer-env
+    volumes:
+      - mailer_jwt:/app/config/jwt
+      # Uploaded attachments: written by the API, read by the worker when sending.
+      - mailer_attachments:/app/var/attachments
+    depends_on:
+      mailer-seed:
+        condition: service_completed_successfully
+
+  mailer-worker:
+    image: rocket-suite-mailer-api
+    environment: *mailer-env
+    command: *worker-command
+    restart: unless-stopped
+    volumes:
+      - mailer_jwt:/app/config/jwt
+      - mailer_attachments:/app/var/attachments
+    depends_on:
+      - mailer-api
+
+  mailer-front:
+    build:
+      context: ${ROCKET_MAILER_DIR:-../../rocket-mailer}/frontend
+      args: *build-args
+    image: rocket-suite-mailer-front
+    environment:
+      NUXT_PUBLIC_API_BASE: ""
+      NUXT_API_INTERNAL_BASE: http://mailer-api:80
+      NUXT_PUBLIC_MAILPIT_URL: http://localhost:8025
+    ports:
+      - "3000:3000"
+    depends_on:
+      - mailer-api
+
+  # SMTP relay of Rocket Mailer: catches every email sent (web interface on http://localhost:8025).
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025"
+
 volumes:
   database_data:
   auth_jwt:
@@ -281,3 +354,5 @@ volumes:
   print_data:
   cloud_jwt:
   cloud_data:
+  mailer_jwt:
+  mailer_attachments:
