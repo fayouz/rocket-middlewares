@@ -11,12 +11,13 @@
     "memory": "16gb",
     "storage": "32gb"
   },
-  "forwardPorts": [3100, 3300, 3200, 3000, 8025],
+  "forwardPorts": [3100, 3300, 3200, 3000, 3700, 8025],
   "portsAttributes": {
     "3100": { "label": "Rocket Auth", "onAutoForward": "notify" },
     "3300": { "label": "Rocket Print", "onAutoForward": "silent" },
     "3200": { "label": "Rocket Cloud", "onAutoForward": "silent" },
     "3000": { "label": "Rocket Mailer", "onAutoForward": "silent" },
+    "3700": { "label": "Rocket PMS", "onAutoForward": "silent" },
     "8025": { "label": "Mailpit", "onAutoForward": "silent" },
     "5432": { "onAutoForward": "ignore" }
   },
