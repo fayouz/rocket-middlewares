@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 branch="$(git rev-parse --abbrev-ref HEAD)"
-for repo in rocket-auth rocket-print rocket-cloud rocket-mailer; do
+for repo in rocket-auth rocket-print rocket-cloud rocket-mailer rocket-pms; do
   [ -d "../$repo/.git" ] && { echo "$repo: déjà cloné"; continue; }
   url="https://github.com/fayouz/$repo.git"
   ref=main
