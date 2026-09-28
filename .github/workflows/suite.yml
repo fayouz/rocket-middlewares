@@ -34,10 +34,13 @@ jobs:
         id: refs
         env:
           BRANCH: ${{ github.head_ref || github.ref_name }}
+          PMS_TOKEN: ${{ secrets.ROCKET_PMS_READ_TOKEN }}
         run: |
           # Same branch as rocket-suite when the brick has it, main otherwise.
           for repo in rocket-auth rocket-print rocket-cloud rocket-mailer rocket-pms; do
-            if git ls-remote --exit-code --heads "https://github.com/fayouz/$repo.git" "refs/heads/$BRANCH" >/dev/null; then
+            url="https://github.com/fayouz/$repo.git"
+            [ "$repo" = rocket-pms ] && url="https://x-access-token:${PMS_TOKEN}@github.com/fayouz/$repo.git"
+            if git ls-remote --exit-code --heads "$url" "refs/heads/$BRANCH" >/dev/null 2>&1; then
               ref="$BRANCH"
             else
               ref=main
@@ -74,6 +77,8 @@ jobs:
           repository: fayouz/rocket-pms
           ref: ${{ steps.refs.outputs.pms }}
           path: rocket-pms
+          # Private repository: read with a fine-grained token (Contents: read on rocket-pms), secret of rocket-suite
+          token: ${{ secrets.ROCKET_PMS_READ_TOKEN }}
 
       - name: Versions of the stack
         run: for repo in rocket-suite rocket-auth rocket-print rocket-cloud rocket-mailer rocket-pms; do echo "$repo $(git -C $repo rev-parse --short HEAD) $(git -C $repo log -1 --format=%s)"; done
