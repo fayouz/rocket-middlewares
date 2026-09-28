@@ -1,4 +1,4 @@
-# rocket-suite
+# rocket-middlewares
 
 Environnement intégré de la suite Rocket, et chaque brique seule.
 
@@ -11,20 +11,20 @@ Les images sont construites à partir des dépôts des briques, avec leurs propr
 Pré-requis : Docker avec Compose v2.24 ou plus récent, et les dépôts clonés côte à côte, sur la même branche :
 
 ```bash
-git clone https://github.com/fayouz/rocket-suite.git
+git clone https://github.com/fayouz/rocket-middlewares.git
 git clone https://github.com/fayouz/rocket-auth.git
 git clone https://github.com/fayouz/rocket-print.git
 git clone https://github.com/fayouz/rocket-cloud.git
 git clone https://github.com/fayouz/rocket-mailer.git
 git clone https://github.com/fayouz/rocket-pms.git
 
-cd rocket-suite
+cd rocket-middlewares
 docker compose up --build
 ```
 
 Le premier lancement prend plusieurs minutes (construction de dix images). Les services `auth-seed`, `print-seed`, `cloud-seed`, `mailer-seed` et `pms-seed` créent chacun leur base, chargent les données de démo puis s'arrêtent ; les API démarrent ensuite.
 
-Des dépôts ailleurs ? Indique leur chemin (relatif au dossier `rocket-suite/`, ou absolu) :
+Des dépôts ailleurs ? Indique leur chemin (relatif au dossier `rocket-middlewares/`, ou absolu) :
 
 ```bash
 ROCKET_AUTH_DIR=~/src/rocket-auth ROCKET_PRINT_DIR=~/src/rocket-print ROCKET_CLOUD_DIR=~/src/rocket-cloud ROCKET_MAILER_DIR=~/src/rocket-mailer ROCKET_PMS_DIR=~/src/rocket-pms \
