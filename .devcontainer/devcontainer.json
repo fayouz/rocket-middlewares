@@ -20,7 +20,6 @@
     3000,
     3400,
     3500,
-    3700,
     8480,
     8025
   ],
@@ -54,10 +53,6 @@
     },
     "3500": {
       "label": "Rocket Dispatch",
-      "onAutoForward": "silent"
-    },
-    "3700": {
-      "label": "Rocket PMS",
       "onAutoForward": "silent"
     },
     "8480": {
