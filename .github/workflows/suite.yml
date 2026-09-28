@@ -37,16 +37,16 @@ jobs:
           PMS_TOKEN: ${{ secrets.ROCKET_PMS_READ_TOKEN }}
         run: |
           # Same branch as rocket-middlewares when the brick has it, main otherwise.
-          for repo in rocket-auth rocket-print rocket-cloud rocket-mailer rocket-pms; do
+          for repo in rocket-auth rocket-print rocket-cloud rocket-mailer rocket-doc-fusion rocket-dispatch rocket-pms; do
             url="https://github.com/fayouz/$repo.git"
-            [ "$repo" = rocket-pms ] && url="https://x-access-token:${PMS_TOKEN}@github.com/fayouz/$repo.git"
+            case "$repo" in rocket-pms|rocket-dispatch) url="https://x-access-token:${PMS_TOKEN}@github.com/fayouz/$repo.git" ;; esac
             if git ls-remote --exit-code --heads "$url" "refs/heads/$BRANCH" >/dev/null 2>&1; then
               ref="$BRANCH"
             else
               ref=main
             fi
             echo "$repo: $ref"
-            echo "${repo#rocket-}=$ref" >> "$GITHUB_OUTPUT"
+            key="${repo#rocket-}"; echo "${key//-/_}=$ref" >> "$GITHUB_OUTPUT"
           done
 
       - uses: actions/checkout@v4
@@ -77,11 +77,23 @@ jobs:
           repository: fayouz/rocket-pms
           ref: ${{ steps.refs.outputs.pms }}
           path: rocket-pms
-          # Private repository: read with a fine-grained token (Contents: read on rocket-pms), secret of rocket-middlewares
+          # Private repository: read with a fine-grained token (Contents: read on rocket-pms and rocket-dispatch), secret of rocket-middlewares
+          token: ${{ secrets.ROCKET_PMS_READ_TOKEN }}
+      - uses: actions/checkout@v4
+        with:
+          repository: fayouz/rocket-doc-fusion
+          ref: ${{ steps.refs.outputs.doc_fusion }}
+          path: rocket-doc-fusion
+      - uses: actions/checkout@v4
+        with:
+          repository: fayouz/rocket-dispatch
+          ref: ${{ steps.refs.outputs.dispatch }}
+          path: rocket-dispatch
+          # Private too: the same token must also read rocket-dispatch
           token: ${{ secrets.ROCKET_PMS_READ_TOKEN }}
 
       - name: Versions of the stack
-        run: for repo in rocket-middlewares rocket-auth rocket-print rocket-cloud rocket-mailer rocket-pms; do echo "$repo $(git -C $repo rev-parse --short HEAD) $(git -C $repo log -1 --format=%s)"; done
+        run: for repo in rocket-middlewares rocket-auth rocket-print rocket-cloud rocket-mailer rocket-doc-fusion rocket-dispatch rocket-pms; do echo "$repo $(git -C $repo rev-parse --short HEAD) $(git -C $repo log -1 --format=%s)"; done
 
       - name: Build the images
         run: $COMPOSE build
@@ -89,7 +101,7 @@ jobs:
       - name: Start the suite
         run: |
           $COMPOSE up -d
-          for seed in auth-seed print-seed cloud-seed mailer-seed pms-seed; do
+          for seed in auth-seed print-seed cloud-seed mailer-seed docfusion-seed dispatch-seed pms-seed; do
             code=$(docker wait "$($COMPOSE ps -aq $seed)")
             echo "$seed: exit $code"; test "$code" = 0
           done
