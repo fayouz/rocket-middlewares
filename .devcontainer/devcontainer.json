@@ -4,23 +4,78 @@
   "features": {
     "ghcr.io/devcontainers/features/docker-in-docker:2": {},
     "ghcr.io/devcontainers/features/github-cli:1": {},
-    "ghcr.io/devcontainers/features/node:1": { "version": "22" }
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "22"
+    }
   },
   "hostRequirements": {
     "cpus": 4,
     "memory": "16gb",
     "storage": "32gb"
   },
-  "forwardPorts": [3100, 3300, 3200, 3000, 3700, 8025],
+  "forwardPorts": [
+    3100,
+    3300,
+    3200,
+    3000,
+    3400,
+    3500,
+    3700,
+    8480,
+    8025
+  ],
   "portsAttributes": {
-    "3100": { "label": "Rocket Auth", "onAutoForward": "notify" },
-    "3300": { "label": "Rocket Print", "onAutoForward": "silent" },
-    "3200": { "label": "Rocket Cloud", "onAutoForward": "silent" },
-    "3000": { "label": "Rocket Mailer", "onAutoForward": "silent" },
-    "3700": { "label": "Rocket PMS", "onAutoForward": "silent" },
-    "8025": { "label": "Mailpit", "onAutoForward": "silent" },
-    "5432": { "onAutoForward": "ignore" }
+    "3100": {
+      "label": "Rocket Auth",
+      "onAutoForward": "notify"
+    },
+    "3300": {
+      "label": "Rocket Print",
+      "onAutoForward": "silent"
+    },
+    "3200": {
+      "label": "Rocket Cloud",
+      "onAutoForward": "silent"
+    },
+    "3000": {
+      "label": "Rocket Mailer",
+      "onAutoForward": "silent"
+    },
+    "8025": {
+      "label": "Mailpit",
+      "onAutoForward": "silent"
+    },
+    "5432": {
+      "onAutoForward": "ignore"
+    },
+    "3400": {
+      "label": "Rocket Doc Fusion",
+      "onAutoForward": "silent"
+    },
+    "3500": {
+      "label": "Rocket Dispatch",
+      "onAutoForward": "silent"
+    },
+    "3700": {
+      "label": "Rocket PMS",
+      "onAutoForward": "silent"
+    },
+    "8480": {
+      "label": "ONLYOFFICE Docs",
+      "onAutoForward": "silent"
+    }
   },
   "postCreateCommand": "bash .devcontainer/clone-bricks.sh",
-  "postStartCommand": "bash .devcontainer/start.sh"
+  "postStartCommand": "bash .devcontainer/start.sh",
+  "customizations": {
+    "codespaces": {
+      "repositories": {
+        "fayouz/rocket-dispatch": {
+          "permissions": {
+            "contents": "read"
+          }
+        }
+      }
+    }
+  }
 }

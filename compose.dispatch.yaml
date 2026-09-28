@@ -1,0 +1,10 @@
+# Rocket Dispatch alone (standalone mode, its own sign-in), with its demo data: the brick's own compose.yaml + compose.demo.yaml.
+#   docker compose -f compose.dispatch.yaml up -d --build   →  http://localhost:3500 (alone, no brick configured), documentation http://localhost:3501
+# ROCKET_DISPATCH_DIR: checkout of the brick, relative to this directory (default ../rocket-dispatch). Same ports as the suite:
+# stop one before starting the other.
+name: rocket-dispatch
+
+include:
+  - path:
+      - ${ROCKET_DISPATCH_DIR:-../rocket-dispatch}/compose.yaml
+      - ${ROCKET_DISPATCH_DIR:-../rocket-dispatch}/compose.demo.yaml

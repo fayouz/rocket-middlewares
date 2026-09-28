@@ -55,6 +55,8 @@ x-auth-env: &auth-env
     rocket-print|Rocket Print|demo-rocket-print-client-secret|http://localhost:3300/auth/callback|http://localhost:3300/login?logged_out=1|http://localhost:3300|i-lucide-printer;
     rocket-cloud|Rocket Cloud|demo-rocket-cloud-client-secret|http://localhost:3200/auth/callback|http://localhost:3200/login?logged_out=1|http://localhost:3200|i-lucide-cloud;
     rocket-mailer|Rocket Mailer|demo-rocket-mailer-client-secret|http://localhost:3000/auth/callback|http://localhost:3000/login?logged_out=1|http://localhost:3000|i-lucide-mail;
+    rocket-doc-fusion|Rocket Doc Fusion|demo-rocket-doc-fusion-client-secret|http://localhost:3400/auth/callback|http://localhost:3400/login?logged_out=1|http://localhost:3400|i-lucide-file-stack;
+    rocket-dispatch|Rocket Dispatch|demo-rocket-dispatch-client-secret|http://localhost:3500/auth/callback|http://localhost:3500/login?logged_out=1|http://localhost:3500|i-lucide-send;
     rocket-pms|Rocket PMS|demo-rocket-pms-client-secret|http://localhost:3700/auth/callback|http://localhost:3700/login?logged_out=1|http://localhost:3700|i-lucide-building-2
 
 # Seed of a brick: its database, schema and demo data, then the Rocket Auth server of the suite.
@@ -344,6 +346,183 @@ services:
     depends_on:
       - mailer-api
 
+  # ---------------------------------------------------------------- Rocket Doc Fusion (http://localhost:3400)
+  # ONLYOFFICE Docs (Community): merge, editor, conversion; the browser loads the editor from http://localhost:8480.
+  onlyoffice:
+    image: onlyoffice/documentserver:9.4.0.1
+    environment:
+      JWT_ENABLED: "true"
+      JWT_SECRET: &onlyoffice-secret demo-suite-onlyoffice-secret-32-characters
+      ALLOW_PRIVATE_IP_ADDRESS: "true"
+    volumes:
+      - docfusion_onlyoffice:/var/www/onlyoffice/Data
+    ports:
+      - "8480:80"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost/healthcheck"]
+      interval: 10s
+      retries: 30
+      start_period: 30s
+
+  docfusion-seed:
+    build:
+      context: ${ROCKET_DOC_FUSION_DIR:-../rocket-doc-fusion}/backend
+      target: prod
+      args: *build-args
+    image: rocket-suite-docfusion-api
+    environment: &docfusion-env
+      <<: *brick-env
+      APP_SECRET: demo-suite-rocket-doc-fusion
+      DATABASE_URL: postgresql://app:app@database:5432/rocket_doc_fusion?serverVersion=16&charset=utf8
+      FRONTEND_URL: http://localhost:3400
+      ROCKET_INTERNAL_URL: http://docfusion-api
+      DEMO_APP_TOKEN: rda_demo_rocket_doc_fusion_do_not_use_in_production
+      ROCKET_AUTH_CLIENT_ID: rocket-doc-fusion
+      ROCKET_AUTH_CLIENT_SECRET: demo-rocket-doc-fusion-client-secret
+      ONLYOFFICE_PUBLIC_URL: http://localhost:8480
+      ONLYOFFICE_INTERNAL_URL: http://onlyoffice
+      ONLYOFFICE_JWT_SECRET: *onlyoffice-secret
+      ONLYOFFICE_CALLBACK_URL: http://docfusion-api
+      ONLYOFFICE_LICENSE_PATH: /app/var/onlyoffice/license.lic
+    volumes: &docfusion-volumes
+      - docfusion_jwt:/app/config/jwt
+      - docfusion_data:/app/var/data
+      - docfusion_onlyoffice:/app/var/onlyoffice
+    command: *brick-seed-command
+    depends_on:
+      database:
+        condition: service_healthy
+
+  docfusion-api:
+    image: rocket-suite-docfusion-api
+    environment: *docfusion-env
+    volumes: *docfusion-volumes
+    depends_on:
+      docfusion-seed:
+        condition: service_completed_successfully
+
+  docfusion-worker:
+    image: rocket-suite-docfusion-api
+    environment: *docfusion-env
+    command: *worker-command
+    restart: unless-stopped
+    volumes: *docfusion-volumes
+    depends_on:
+      docfusion-api:
+        condition: service_started
+      onlyoffice:
+        condition: service_healthy
+
+  docfusion-front:
+    build:
+      context: ${ROCKET_DOC_FUSION_DIR:-../rocket-doc-fusion}/frontend
+      args: *build-args
+    image: rocket-suite-docfusion-front
+    environment:
+      NUXT_PUBLIC_API_BASE: ""
+      NUXT_API_INTERNAL_BASE: http://docfusion-api:80
+    ports:
+      - "3400:3000"
+    depends_on:
+      - docfusion-api
+
+  # ---------------------------------------------------------------- Rocket Dispatch (http://localhost:3500)
+  dispatch-seed:
+    build:
+      context: ${ROCKET_DISPATCH_DIR:-../rocket-dispatch}/backend
+      target: prod
+      args: *build-args
+    image: rocket-suite-dispatch-api
+    environment: &dispatch-env
+      <<: *brick-env
+      APP_SECRET: demo-suite-rocket-dispatch
+      DATABASE_URL: postgresql://app:app@database:5432/rocket_dispatch?serverVersion=16&charset=utf8
+      FRONTEND_URL: http://localhost:3500
+      ROCKET_INTERNAL_URL: http://dispatch-api
+      DEMO_APP_TOKEN: rsa_demo_rocket_dispatch_do_not_use_in_production
+      ROCKET_AUTH_CLIENT_ID: rocket-dispatch
+      ROCKET_AUTH_CLIENT_SECRET: demo-rocket-dispatch-client-secret
+      # The bricks, called with tokens of Rocket Auth (client credentials): dispatch-link declares the application
+      # "Rocket Dispatch" (client rocket-dispatch) in each of them. The *_PUBLIC_URL are for the browser.
+      ROCKET_CLOUD_URL: http://cloud-api
+      ROCKET_CLOUD_PUBLIC_URL: http://localhost:3200
+      ROCKET_DOC_FUSION_URL: http://docfusion-api
+      ROCKET_DOC_FUSION_PUBLIC_URL: http://localhost:3400
+      ROCKET_MAILER_URL: http://mailer-api
+      ROCKET_MAILER_PUBLIC_URL: http://localhost:3000
+      ROCKET_PRINT_URL: http://print-api
+    volumes: &dispatch-volumes
+      - dispatch_jwt:/app/config/jwt
+      - dispatch_data:/app/var/data
+    command: *brick-seed-command
+    depends_on:
+      database:
+        condition: service_healthy
+
+  # One-shot: the application "Rocket Dispatch" in Rocket Cloud, Doc Fusion, Mailer and Print, linked to the client
+  # rocket-dispatch of Rocket Auth, allowed to act as a user and to embed their pages in http://localhost:3500
+  # (what an administrator does in Administration → Applications of each brick).
+  dispatch-link:
+    image: postgres:16-alpine
+    environment:
+      PGHOST: database
+      PGUSER: app
+      PGPASSWORD: app
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        for db in rocket_cloud rocket_doc_fusion rocket_mailer rocket_print; do
+          psql -v ON_ERROR_STOP=1 -d "$$db" -c "INSERT INTO application (id, name, description, token_hash, token_hint, can_impersonate, enabled, allowed_origins, oauth_client_id, created_at, updated_at)
+            VALUES (gen_random_uuid(), 'Rocket Dispatch', 'Publipostage de la suite (client Rocket Auth rocket-dispatch)', encode(sha256(gen_random_uuid()::text::bytea), 'hex'), 'suite', true, true, '[\"http://localhost:3500\"]', 'rocket-dispatch', now(), now())
+            ON CONFLICT (oauth_client_id) DO NOTHING"
+        done
+        psql -v ON_ERROR_STOP=1 -d rocket_mailer -c "INSERT INTO application_sender (application_id, sender_email, sender_name, allowed_senders)
+          SELECT id, 'publipostage@example.org', 'Rocket Dispatch', '[\"*@example.org\"]' FROM application WHERE oauth_client_id = 'rocket-dispatch'
+          ON CONFLICT (application_id) DO NOTHING"
+    depends_on:
+      cloud-seed:
+        condition: service_completed_successfully
+      docfusion-seed:
+        condition: service_completed_successfully
+      mailer-seed:
+        condition: service_completed_successfully
+      print-seed:
+        condition: service_completed_successfully
+
+  dispatch-api:
+    image: rocket-suite-dispatch-api
+    environment: *dispatch-env
+    volumes: *dispatch-volumes
+    depends_on:
+      dispatch-seed:
+        condition: service_completed_successfully
+      dispatch-link:
+        condition: service_completed_successfully
+
+  dispatch-worker:
+    image: rocket-suite-dispatch-api
+    environment: *dispatch-env
+    command: *worker-command
+    restart: unless-stopped
+    volumes: *dispatch-volumes
+    depends_on:
+      - dispatch-api
+
+  dispatch-front:
+    build:
+      context: ${ROCKET_DISPATCH_DIR:-../rocket-dispatch}/frontend
+      args: *build-args
+    image: rocket-suite-dispatch-front
+    environment:
+      NUXT_PUBLIC_API_BASE: ""
+      NUXT_API_INTERNAL_BASE: http://dispatch-api:80
+    ports:
+      - "3500:3000"
+    depends_on:
+      - dispatch-api
+
   # SMTP relay of Rocket Mailer: catches every email sent (web interface on http://localhost:8025).
   mailpit:
     image: axllent/mailpit:latest
@@ -418,6 +597,11 @@ services:
 
 volumes:
   database_data:
+  docfusion_jwt:
+  docfusion_data:
+  docfusion_onlyoffice:
+  dispatch_jwt:
+  dispatch_data:
   auth_jwt:
   auth_data:
   print_jwt:
