@@ -1,6 +1,6 @@
 name: Suite
 
-# Integrated environment (compose.yaml): Rocket Auth + Rocket Print + Rocket Cloud + Rocket Mailer + Rocket PMS built
+# Integrated environment (compose.yaml): Rocket Auth + Rocket Print + Rocket Cloud + Rocket Mailer + Rocket Doc Fusion + Rocket Dispatch built
 # from their own Dockerfiles, then the suite scenario in a browser (e2e/).
 on:
   push:
@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   suite:
-    name: Suite environment (Auth + Print + Cloud + Mailer + PMS)
+    name: Suite environment (Auth + Print + Cloud + Mailer + Doc Fusion + Dispatch)
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -28,18 +28,17 @@ jobs:
       PRINT: http://localhost:3300
       CLOUD: http://localhost:3200
       MAILER: http://localhost:3000
-      PMS: http://localhost:3700
     steps:
       - name: Branch of the bricks
         id: refs
         env:
           BRANCH: ${{ github.head_ref || github.ref_name }}
-          PMS_TOKEN: ${{ secrets.ROCKET_PMS_READ_TOKEN }}
+          PRIVATE_TOKEN: ${{ secrets.ROCKET_PRIVATE_READ_TOKEN }}
         run: |
           # Same branch as rocket-middlewares when the brick has it, main otherwise.
-          for repo in rocket-auth rocket-print rocket-cloud rocket-mailer rocket-doc-fusion rocket-dispatch rocket-pms; do
+          for repo in rocket-auth rocket-print rocket-cloud rocket-mailer rocket-doc-fusion rocket-dispatch; do
             url="https://github.com/fayouz/$repo.git"
-            case "$repo" in rocket-pms|rocket-dispatch) url="https://x-access-token:${PMS_TOKEN}@github.com/fayouz/$repo.git" ;; esac
+            case "$repo" in rocket-dispatch) url="https://x-access-token:${PRIVATE_TOKEN}@github.com/fayouz/$repo.git" ;; esac
             if git ls-remote --exit-code --heads "$url" "refs/heads/$BRANCH" >/dev/null 2>&1; then
               ref="$BRANCH"
             else
@@ -74,13 +73,6 @@ jobs:
           path: rocket-mailer
       - uses: actions/checkout@v4
         with:
-          repository: fayouz/rocket-pms
-          ref: ${{ steps.refs.outputs.pms }}
-          path: rocket-pms
-          # Private repository: read with a fine-grained token (Contents: read on rocket-pms and rocket-dispatch), secret of rocket-middlewares
-          token: ${{ secrets.ROCKET_PMS_READ_TOKEN }}
-      - uses: actions/checkout@v4
-        with:
           repository: fayouz/rocket-doc-fusion
           ref: ${{ steps.refs.outputs.doc_fusion }}
           path: rocket-doc-fusion
@@ -89,11 +81,11 @@ jobs:
           repository: fayouz/rocket-dispatch
           ref: ${{ steps.refs.outputs.dispatch }}
           path: rocket-dispatch
-          # Private too: the same token must also read rocket-dispatch
-          token: ${{ secrets.ROCKET_PMS_READ_TOKEN }}
+          # Private repository: fine-grained token (Contents: read on rocket-dispatch), secret of rocket-middlewares
+          token: ${{ secrets.ROCKET_PRIVATE_READ_TOKEN }}
 
       - name: Versions of the stack
-        run: for repo in rocket-middlewares rocket-auth rocket-print rocket-cloud rocket-mailer rocket-doc-fusion rocket-dispatch rocket-pms; do echo "$repo $(git -C $repo rev-parse --short HEAD) $(git -C $repo log -1 --format=%s)"; done
+        run: for repo in rocket-middlewares rocket-auth rocket-print rocket-cloud rocket-mailer rocket-doc-fusion rocket-dispatch; do echo "$repo $(git -C $repo rev-parse --short HEAD) $(git -C $repo log -1 --format=%s)"; done
 
       - name: Build the images
         run: $COMPOSE build
@@ -101,7 +93,7 @@ jobs:
       - name: Start the suite
         run: |
           $COMPOSE up -d
-          for seed in auth-seed print-seed cloud-seed mailer-seed docfusion-seed dispatch-seed pms-seed; do
+          for seed in auth-seed print-seed cloud-seed mailer-seed docfusion-seed dispatch-seed; do
             code=$(docker wait "$($COMPOSE ps -aq $seed)")
             echo "$seed: exit $code"; test "$code" = 0
           done
@@ -112,7 +104,6 @@ jobs:
               && curl -fsS $PRINT/api/suite -o /dev/null \
               && curl -fsS $CLOUD/api/suite -o /dev/null \
               && curl -fsS $MAILER/api/suite -o /dev/null \
-              && curl -fsS $PMS/api/suite -o /dev/null \
               && curl -fsS http://localhost:8025/ -o /dev/null \
               && exit 0
             sleep 2
@@ -125,12 +116,11 @@ jobs:
           # The issuer is Rocket Auth's interface, which relays the OpenID Connect endpoints.
           curl -fsS $AUTH/.well-known/openid-configuration | jq -e '.issuer == "http://localhost:3100" and (.authorization_endpoint | startswith("http://localhost:3100/"))'
           # Applications of the switcher, and the interface for "Mon compte"
-          curl -fsS $AUTH/api/suite/apps | tee /dev/stderr | jq -e '([.apps[].name] | index("Rocket Print") and index("Rocket Cloud") and index("Rocket Mailer") and index("Rocket PMS")) and .account == "http://localhost:3100"'
+          curl -fsS $AUTH/api/suite/apps | tee /dev/stderr | jq -e '([.apps[].name] | index("Rocket Print") and index("Rocket Cloud") and index("Rocket Mailer")) and .account == "http://localhost:3100"'
           # The bricks are in suite mode, with Rocket Auth as their provider
           curl -fsS $PRINT/api/suite | tee /dev/stderr | jq -e '.mode == "suite" and .auth.name == "Rocket Auth"'
           curl -fsS $CLOUD/api/suite | tee /dev/stderr | jq -e '.mode == "suite" and .auth.name == "Rocket Auth"'
           curl -fsS $MAILER/api/suite | tee /dev/stderr | jq -e '.mode == "suite" and .auth.name == "Rocket Auth"'
-          curl -fsS $PMS/api/suite | tee /dev/stderr | jq -e '.mode == "suite" and .auth.name == "Rocket Auth"'
           # Rocket Mailer: its widget script, and its SMTP relay (Mailpit)
           curl -fsS $MAILER/embed.js | grep -q RocketMailer
           curl -fsS http://localhost:8025/api/v1/messages -H 'Accept: application/json' | jq -e '.messages | type == "array"'
